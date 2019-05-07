@@ -88,8 +88,7 @@ type conn struct {
 
 	channel chan ReplyData
 
-	exitChan chan  int
-
+	exitChan chan int
 }
 
 // NewConn returns a new Redigo connection for the given net connection.
@@ -101,7 +100,7 @@ func NewConn(netConn net.Conn, readTimeout, writeTimeout time.Duration) Conn {
 		readTimeout:  readTimeout,
 		writeTimeout: writeTimeout,
 		channel:      make(chan ReplyData, 1024),
-		exitChan: make(chan int, 1),
+		exitChan:     make(chan int, 1),
 	}
 }
 
@@ -121,8 +120,8 @@ func (c *conn) Close() error {
 	c.mu.Unlock()
 	return err
 }
-func (c *conn)sendCloseSignal(){
-	c.exitChan<-1
+func (c *conn) sendCloseSignal() {
+	c.exitChan <- 1
 }
 func (c *conn) fatal(err error) error {
 	c.mu.Lock()
@@ -494,13 +493,13 @@ func (c *conn) ReadPSyncResult() {
 			return
 
 		default:
-				cmd, n, err := c.ReadMasterBulkData()
-				if err != nil {
-					fmt.Println("er",err)
-					//break
-				}
-				fmt.Print("Redis> ")
-				c.channel <- ReplyData{cmd, n}
+			cmd, n, err := c.ReadMasterBulkData()
+			if err != nil {
+				fmt.Println("er", err)
+				//break
+			}
+			fmt.Print("Redis> ")
+			c.channel <- ReplyData{cmd, n}
 		}
 	}
 
@@ -510,8 +509,6 @@ func (c *conn) GetResultChannel() chan ReplyData {
 
 	return c.channel
 }
-
-
 
 func (c *conn) GetBr() io.Reader {
 	return c.br

@@ -2,27 +2,27 @@ package replication
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"github.com/pkg/errors"
 )
 
 type mockServer struct {
-	conn        Conn
-	masterHost  string
-	masterPort  int
-	offset      int64
-	masterRunId string
-	mockServerPort   int
-	mu          sync.RWMutex
-	RdbBytes    int64
-	replicator  Replicator
-	masterauth  string
-	ackCtlChan chan int
+	conn           Conn
+	masterHost     string
+	masterPort     int
+	offset         int64
+	masterRunId    string
+	mockServerPort int
+	mu             sync.RWMutex
+	RdbBytes       int64
+	replicator     Replicator
+	masterauth     string
+	ackCtlChan     chan int
 }
 
 type Replicator interface {
@@ -50,14 +50,14 @@ func NewReplication(conf RedisReplicationConf, repl Replicator) *mockServer {
 		offset = int64(-1)
 	}
 	return &mockServer{
-		masterHost:  conf.MasterHost,
-		masterPort:  conf.MasterPort,
-		masterRunId: masterRunId,
-		mockServerPort:   conf.MockServerPort,
-		offset:      offset,
-		replicator:  repl,
-		masterauth:  conf.MasterAuth,
-		ackCtlChan: make(chan int, 1),
+		masterHost:     conf.MasterHost,
+		masterPort:     conf.MasterPort,
+		masterRunId:    masterRunId,
+		mockServerPort: conf.MockServerPort,
+		offset:         offset,
+		replicator:     repl,
+		masterauth:     conf.MasterAuth,
+		ackCtlChan:     make(chan int, 1),
 	}
 }
 
@@ -73,10 +73,10 @@ func (s *mockServer) StartReplication() error {
 		s.conn.Flush()
 		retVal, err := s.conn.readReply()
 		retValString := fmt.Sprintf("%s", retVal)
-		if err !=nil {
+		if err != nil {
 			errors.New(fmt.Sprintf("error: %s, %s", err, retValString))
 		}
-		if !strings.HasPrefix(retValString, "+"){
+		if !strings.HasPrefix(retValString, "+") {
 			errors.New(fmt.Sprintf("error: %s, %s", err, retValString))
 		}
 
@@ -93,12 +93,12 @@ func (s *mockServer) StartReplication() error {
 			s.offset, _ = strconv.ParseInt(string(lineSplit[2]), 10, 64)
 
 		}
-	}else {
+	} else {
 		return errors.New(string(line[1:]))
 	}
-	for{
+	for {
 		line, err = s.conn.readLine()
-		if strings.HasPrefix(string(line), "$"){
+		if strings.HasPrefix(string(line), "$") {
 			s.RdbBytes, err = strconv.ParseInt(string(line[1:]), 10, 64)
 			break
 		}
@@ -149,20 +149,18 @@ func (s *mockServer) sendMockServerPort() error {
 	fmt.Println("send mockServer port")
 	retValString := fmt.Sprintf("%s", ret)
 
-	if err !=nil {
+	if err != nil {
 		errors.New(fmt.Sprintf("error: %s, %s", err, retValString))
 	}
-	if !strings.HasPrefix(retValString, "+"){
+	if !strings.HasPrefix(retValString, "+") {
 		errors.New(fmt.Sprintf("error: %s, %s", err, retValString))
 	}
 	return err
 }
 
-func (s *mockServer) StopReplication()  {
+func (s *mockServer) StopReplication() {
 	s.ackCtlChan <- 1
 
 	s.conn.sendCloseSignal()
 	fmt.Println("stop")
 }
-
-
