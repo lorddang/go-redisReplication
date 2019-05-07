@@ -1,0 +1,4 @@
+github.com/ngaut/log v0.0.0-20180314031856-b8e36e7ba5ac h1:wyheT2lPXRQqYPWY2IVW5BTLrbqCsnhL61zK2R5goLA=
+github.com/ngaut/log v0.0.0-20180314031856-b8e36e7ba5ac/go.mod h1:ueVCjKQllPmX7uEvCYnZD5b8qjidGf1TCH61arVe4SU=
+github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
+github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
