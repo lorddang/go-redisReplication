@@ -2,22 +2,21 @@ package main
 
 import (
 	"fmt"
+	"github.com/lorddang/go-redisReplication/replication"
+	"github.com/ngaut/log"
 	"io"
 	"os"
-	"github.com/ngaut/log"
-	"github.com/lorddang/go-redisReplication/replication"
 	"os/signal"
-	"time"
 )
 
 type replicator struct {
 }
 
-func (r *replicator) ProcessRdb(br io.Reader, n int64) error {
+func (r *replicator) ProcessRdb(br io.Reader, n int64) (err error) {
 	file, _ := os.OpenFile("dump.rdb", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
 	defer file.Close()
-	io.CopyN(file, br, n)
-	return nil
+	_, err = io.CopyN(file, br, n)
+	return err
 }
 
 func (r *replicator) ProcessMasterRepl(cmd string) error {
@@ -26,14 +25,15 @@ func (r *replicator) ProcessMasterRepl(cmd string) error {
 }
 func main() {
 
-	slaveCfg := replication.RedisReplicationConf{
+	replConfig := replication.RedisReplicationConf{
 		MasterHost:     "127.0.0.1",
-		MasterPort:     7777,
+		MasterPort:     6328,
 		MockServerPort: 8081,
 		MasterAuth:     "",
 	}
 	repl := &replicator{}
-	replicator := replication.NewReplication(slaveCfg, repl)
+	replicator := replication.NewReplication(replConfig, repl)
+	defer replicator.StopReplication()
 	go func() {
 		err := replicator.StartReplication()
 		if err != nil {
@@ -41,12 +41,12 @@ func main() {
 			os.Exit(-1)
 		}
 	}()
-	time.Sleep(time.Second*3)
+	//time.Sleep(time.Second*1)
 	//replicator.StopReplication()
 	handleSignal()
 }
 
-func handleSignal()  {
+func handleSignal() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs)
 	func() {
@@ -55,4 +55,10 @@ func handleSignal()  {
 
 		os.Exit(0)
 	}()
+}
+
+func init() {
+	log.SetLevel(log.LOG_LEVEL_DEBUG)
+	logFile, _ := os.OpenFile("replication.log", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
+	log.SetOutput(logFile)
 }

@@ -2,6 +2,7 @@ package replication
 
 import (
 	"fmt"
+	"github.com/ngaut/log"
 	"github.com/pkg/errors"
 	"io"
 	"net"
@@ -19,14 +20,14 @@ type mockServer struct {
 	masterRunId    string
 	mockServerPort int
 	mu             sync.RWMutex
-	RdbBytes       int64
+	rdbBytes       int64
 	replicator     Replicator
-	masterauth     string
+	masterAuth     string
 	ackCtlChan     chan int
 }
 
 type Replicator interface {
-	ProcessRdb(br io.Reader, totalBytes int64) error
+	ProcessRdb(br io.Reader, rdbBytes int64) error
 
 	ProcessMasterRepl(repl string) error
 }
@@ -56,7 +57,7 @@ func NewReplication(conf RedisReplicationConf, repl Replicator) *mockServer {
 		mockServerPort: conf.MockServerPort,
 		offset:         offset,
 		replicator:     repl,
-		masterauth:     conf.MasterAuth,
+		masterAuth:     conf.MasterAuth,
 		ackCtlChan:     make(chan int, 1),
 	}
 }
@@ -64,12 +65,14 @@ func NewReplication(conf RedisReplicationConf, repl Replicator) *mockServer {
 func (s *mockServer) StartReplication() error {
 	connAddr := fmt.Sprintf("%s:%d", s.masterHost, s.masterPort)
 	c, err := net.Dial("tcp", connAddr)
+	log.Infof("Conn Redis Server %s", connAddr)
 	if err != nil {
 		return err
 	}
 	s.conn = NewConn(c, 0, 0)
-	if s.masterauth != "" {
-		s.conn.Send("AUTH", s.masterauth)
+	if s.masterAuth != "" {
+		log.Infof("masterAuth is %s, send Auth command")
+		s.conn.Send("AUTH", s.masterAuth)
 		s.conn.Flush()
 		retVal, err := s.conn.readReply()
 		retValString := fmt.Sprintf("%s", retVal)
@@ -80,6 +83,8 @@ func (s *mockServer) StartReplication() error {
 			errors.New(fmt.Sprintf("error: %s, %s", err, retValString))
 		}
 
+	} else {
+		log.Info("masterAuth is null, no need send auth command")
 	}
 	s.sendMockServerPort()
 
@@ -99,12 +104,17 @@ func (s *mockServer) StartReplication() error {
 	for {
 		line, err = s.conn.readLine()
 		if strings.HasPrefix(string(line), "$") {
-			s.RdbBytes, err = strconv.ParseInt(string(line[1:]), 10, 64)
+			s.rdbBytes, err = strconv.ParseInt(string(line[1:]), 10, 64)
 			break
 		}
 	}
-
-	s.replicator.ProcessRdb(s.conn.GetBr(), s.RdbBytes)
+	log.Info("Start Process RDB Stream")
+	err = s.replicator.ProcessRdb(s.conn.GetBr(), s.rdbBytes)
+	if err == nil {
+		log.Info("Process RDB Finished")
+	} else {
+		log.Errorf("Process RDB Error: %v", err)
+	}
 
 	go s.conn.ReadPSyncResult()
 	go func() {
@@ -114,6 +124,7 @@ func (s *mockServer) StartReplication() error {
 			case <-ticker.C:
 				s.sendAck()
 			case <-s.ackCtlChan:
+				log.Debug("Cancel Send Ack Goroutine")
 				ticker.Stop()
 				return
 
@@ -127,13 +138,14 @@ func (s *mockServer) StartReplication() error {
 		s.setOffset(int64(rpd.Bytes))
 		s.replicator.ProcessMasterRepl(cmd)
 	}
-	fmt.Println("over")
+	log.Debugf("Replication Over !!!")
 	return nil
 }
 
 func (s *mockServer) sendAck() error {
 	err := s.conn.Send("REPLCONF", "ACK", s.offset)
 	s.conn.Flush()
+	log.Debugf("Send ACK to Master: REPLCONF ACK %d", s.offset)
 	return err
 }
 
@@ -143,10 +155,10 @@ func (s *mockServer) setOffset(offset int64) {
 }
 
 func (s *mockServer) sendMockServerPort() error {
+	log.Debugf("Send MockServer Port: REPLCONF listening-port %d", s.mockServerPort)
 	err := s.conn.Send("REPLCONF", "listening-port", s.mockServerPort)
 	s.conn.Flush()
 	ret, err := s.conn.readReply()
-	fmt.Println("send mockServer port")
 	retValString := fmt.Sprintf("%s", ret)
 
 	if err != nil {
@@ -159,8 +171,9 @@ func (s *mockServer) sendMockServerPort() error {
 }
 
 func (s *mockServer) StopReplication() {
+	log.Info("User Request Stop Replication, Stop Replication")
 	s.ackCtlChan <- 1
 
 	s.conn.sendCloseSignal()
-	fmt.Println("stop")
+	log.Info("Replication was Stopped, Bye Bye !!!")
 }

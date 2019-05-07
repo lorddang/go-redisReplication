@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ngaut/log"
 	"io"
 	"net"
 	"strconv"
@@ -488,17 +489,15 @@ func (c *conn) ReadPSyncResult() {
 	for {
 		select {
 		case <-c.exitChan:
-			fmt.Println("exit")
 			close(c.channel)
 			return
 
 		default:
 			cmd, n, err := c.ReadMasterBulkData()
 			if err != nil {
-				fmt.Println("er", err)
-				//break
+				log.Errorf("ReadMasterBulkData Error %v", err)
+				return
 			}
-			fmt.Print("Redis> ")
 			c.channel <- ReplyData{cmd, n}
 		}
 	}
