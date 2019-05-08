@@ -87,36 +87,42 @@ func (s *mockServer) StartReplication() error {
 		log.Info("masterAuth is null, no need send auth command")
 	}
 	s.sendMockServerPort()
-
 	s.conn.Send("PSYNC", s.masterRunId, s.offset)
 	s.conn.Flush()
 	line, err := s.conn.readLine()
+	log.Debugf("%s", line)
 	if line[0] == '+' {
 		lineSplit := strings.Split(string(line[1:]), " ")
 		if lineSplit[0] == "FULLRESYNC" {
 			s.masterRunId = lineSplit[1]
-			s.offset, _ = strconv.ParseInt(string(lineSplit[2]), 10, 64)
-
+			offset, _ := strconv.ParseInt(string(lineSplit[2]), 10, 64)
+			s.setOffset(offset)
+			for {
+				line, err = s.conn.readLine()
+				if strings.HasPrefix(string(line), "$") {
+					s.rdbBytes, err = strconv.ParseInt(string(line[1:]), 10, 64)
+					break
+				}
+			}
+			log.Info("Start Process RDB Stream")
+			err = s.replicator.ProcessRdb(s.conn.GetBr(), s.rdbBytes)
+			if err == nil {
+				log.Info("Process RDB Finished")
+			} else {
+				log.Errorf("Process RDB Error: %v", err)
+			}
+		} else if lineSplit[0] == "CONTINUE" {
+			log.Info("MASTER <-> SLAVE sync: Master accepted a Partial Resynchronization.")
+			log.Info("Successful partial resynchronization with master.")
+			line, err = s.conn.readLine()
+			log.Debugf("CONTINUE %d", len(line))
+			// up to the current offset+1
+			s.setOffset(1)
 		}
 	} else {
 		return errors.New(string(line[1:]))
 	}
-	for {
-		line, err = s.conn.readLine()
-		if strings.HasPrefix(string(line), "$") {
-			s.rdbBytes, err = strconv.ParseInt(string(line[1:]), 10, 64)
-			break
-		}
-	}
-	log.Info("Start Process RDB Stream")
-	err = s.replicator.ProcessRdb(s.conn.GetBr(), s.rdbBytes)
-	if err == nil {
-		log.Info("Process RDB Finished")
-	} else {
-		log.Errorf("Process RDB Error: %v", err)
-	}
 
-	go s.conn.ReadPSyncResult()
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		for {
@@ -132,11 +138,18 @@ func (s *mockServer) StartReplication() error {
 
 		}
 	}()
-	channel := s.conn.GetResultChannel()
-	for rpd := range channel {
-		cmd := rpd.Data
-		s.setOffset(int64(rpd.Bytes))
+	for {
+
+		cmd, n, err := s.conn.ReadMasterBulkData()
+		if err != nil {
+			log.Errorf("ReadMasterBulkData Error %v Stop Replication", err)
+			//s.ackCtlChan <- 1
+			//s.conn.sendCloseSignal()
+			break
+		}
+		s.setOffset(int64(n))
 		s.replicator.ProcessMasterRepl(cmd)
+
 	}
 	log.Debugf("Replication Over !!!")
 	return nil
@@ -150,6 +163,9 @@ func (s *mockServer) sendAck() error {
 }
 
 func (s *mockServer) setOffset(offset int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log.Debugf("set offset %d + %d = %d", s.offset, offset, s.offset+offset)
 	s.offset += offset
 
 }
@@ -175,5 +191,7 @@ func (s *mockServer) StopReplication() {
 	s.ackCtlChan <- 1
 
 	s.conn.sendCloseSignal()
+	s.conn.Close()
+
 	log.Info("Replication was Stopped, Bye Bye !!!")
 }

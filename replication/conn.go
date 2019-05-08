@@ -42,6 +42,7 @@ type Conn interface {
 	GetResultChannel() chan ReplyData
 	GetBr() io.Reader
 	sendCloseSignal()
+	ReadMasterBulkData() (str string, bytes int, err error)
 }
 
 // Argument is the interface implemented by an object which wants to control how

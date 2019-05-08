@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"time"
 )
 
 type replicator struct {
@@ -41,8 +42,12 @@ func main() {
 			os.Exit(-1)
 		}
 	}()
-	//time.Sleep(time.Second*1)
-	//replicator.StopReplication()
+	time.Sleep(time.Second * 4)
+
+	replicator.StopReplication()
+	time.Sleep(time.Second * 4)
+
+	replicator.StartReplication()
 	handleSignal()
 }
 
@@ -58,7 +63,7 @@ func handleSignal() {
 }
 
 func init() {
-	log.SetLevel(log.LOG_LEVEL_DEBUG)
+	log.SetLevel(log.LOG_LEVEL_INFO)
 	logFile, _ := os.OpenFile("replication.log", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
 	log.SetOutput(logFile)
 }
