@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ngaut/log"
 	"io"
 	"net"
 	"strconv"
@@ -41,6 +42,7 @@ type Conn interface {
 	GetResultChannel() chan ReplyData
 	GetBr() io.Reader
 	sendCloseSignal()
+	ReadMasterBulkData() (str string, bytes int, err error)
 }
 
 // Argument is the interface implemented by an object which wants to control how
@@ -488,17 +490,15 @@ func (c *conn) ReadPSyncResult() {
 	for {
 		select {
 		case <-c.exitChan:
-			fmt.Println("exit")
 			close(c.channel)
 			return
 
 		default:
 			cmd, n, err := c.ReadMasterBulkData()
 			if err != nil {
-				fmt.Println("er", err)
-				//break
+				log.Errorf("ReadMasterBulkData Error %v", err)
+				return
 			}
-			fmt.Print("Redis> ")
 			c.channel <- ReplyData{cmd, n}
 		}
 	}
